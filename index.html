@@ -140,6 +140,12 @@ input[type=search],select{width:100%;padding:10px 12px;border-radius:12px;border
 .why li{margin:0 0 8px;font-size:14px}
 .why a{color:var(--indigo)}
 .answer{border-top:1px dashed var(--line);margin-top:14px;padding-top:6px}
+.reading{display:flex;flex-direction:column;align-items:center;gap:0;line-height:1.3}
+.ruby{display:flex;flex-wrap:wrap;gap:2px 7px;margin:3px 0 2px;align-items:flex-end}
+.tk{display:inline-flex;flex-direction:column;align-items:center;line-height:1.25}
+.tk span{font-size:13px;color:var(--muted)}
+.tk small{font-size:12px;color:var(--indigo);font-weight:500}
+.tk.p{font-size:13px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -291,12 +297,18 @@ function sentenceJP(s,target){
   }
   return out+esc(s.j.slice(p));
 }
+function readingHTML(s){
+  if(!st.hira&&!st.romaji)return '';
+  const ks=s.h.split('|'), rs=(s.r||'').split('|');
+  if(!st.romaji)return '<div class="hira" lang="ja">'+esc(ks.join(''))+'</div>';
+  return '<div class="ruby">'+ks.map((k,n)=>rs[n]?'<span class="tk">'+(st.hira?'<span lang="ja">'+esc(k)+'</span>':'')+'<small>'+esc(rs[n])+'</small></span>':'').join('')+'</div>';
+}
 function sentHTML(i){
   return pickSentences(i,3).map(c=>{
     const cov=c.total===0?'':(c.unknown===0?'<div class="cov">You know every other word</div>':'<div class="cov low">You know '+c.known+' of '+c.total+' other words</div>');
     return '<div class="sent"><button class="speak mini" data-say="'+esc(c.s.j)+'" aria-label="Play sentence">'+ICON_PLAY+'</button><div>'+
       '<div class="jp" lang="ja">'+sentenceJP(c.s,i)+'</div>'+
-      (st.hira?'<div class="hira" lang="ja">'+esc(c.s.h)+'</div>':'')+
+      readingHTML(c.s)+
       '<div class="en">'+esc(c.s.e)+'</div>'+cov+'</div></div>';
   }).join('')+'<div class="legend"><b>Blue</b> = words you have learned. Tap any word for its meaning.</div>';
 }
@@ -338,7 +350,7 @@ function poolBar(){
     (u<W.length?'<button class="btn small" data-act="unlock">+100</button>':'')+'</div>';
 }
 function pronHTML(w){
-  return '<div class="pron">'+(w.w!==w.k?'<span class="kana" lang="ja">'+esc(w.k)+'</span>':'')+(st.romaji?'<span class="romaji">'+esc(w.r)+'</span>':'')+'</div>';
+  return '<div class="reading">'+(w.w!==w.k?'<span class="kana" lang="ja">'+esc(w.k)+'</span>':'')+(st.romaji?'<span class="romaji">'+esc(w.r)+'</span>':'')+'</div>';
 }
 function playBtns(w){
   return '<div class="pron" style="margin-top:6px"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button>'+
@@ -498,8 +510,8 @@ function renderSettings(){
    '<label class="toggle" for="t5">Include listening-only recall<input type="checkbox" id="t5" data-set="listen"'+(st.listen?' checked':'')+'></label></section>'+
   '<section><h3>Display and sound</h3>'+
    '<label class="toggle" for="t1">Play the word automatically<input type="checkbox" id="t1" data-set="autoplay"'+(st.autoplay?' checked':'')+'></label>'+
-   '<label class="toggle" for="t2">Show romaji<input type="checkbox" id="t2" data-set="romaji"'+(st.romaji?' checked':'')+'></label>'+
-   '<label class="toggle" for="t3">Show kana reading under sentences<input type="checkbox" id="t3" data-set="hira"'+(st.hira?' checked':'')+'></label>'+
+   '<label class="toggle" for="t2">Show romaji (English letters) under the kana<input type="checkbox" id="t2" data-set="romaji"'+(st.romaji?' checked':'')+'></label>'+
+   '<label class="toggle" for="t3">Show kana under sentences<input type="checkbox" id="t3" data-set="hira"'+(st.hira?' checked':'')+'></label>'+
    '<p style="margin-top:8px">Speech speed</p>'+seg('rate',[[0.7,'Slower'],[0.9,'Normal'],[1.05,'Native']])+
    (jaVoices.length>1?'<p style="margin-top:10px">Voice</p><select id="voiceSel" aria-label="Japanese voice"><option value="">Automatic</option>'+voices+'</select>':'')+
    '<p style="margin-top:10px">'+(jaVoices.length?jaVoices.length+' Japanese voice(s) found on this device.':'No Japanese voice listed yet. On iPhone add one in Settings › Accessibility › Spoken Content › Voices › Japanese.')+'</p>'+
