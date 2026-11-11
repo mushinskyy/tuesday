@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tango Sprint</title>
+<title>Tuesday</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
@@ -128,15 +128,27 @@ input[type=search],select{width:100%;padding:10px 12px;border-radius:12px;border
 .foot{font-size:11px;color:var(--muted);text-align:center;margin-top:18px}
 .foot a{color:inherit}
 .loading{padding:60px 0;text-align:center;color:var(--muted)}
+.brand span{font-family:var(--body);font-weight:700;font-size:20px;letter-spacing:.01em}
+.kn{color:var(--indigo);border-bottom:2px solid var(--indigo);cursor:pointer}
+.uw{cursor:pointer}
+.ask{font-size:15px;color:var(--muted);text-align:center;margin:6px 0 0}
+.bigm{font-size:clamp(26px,7vw,34px);font-weight:700;text-align:center;line-height:1.25;text-wrap:balance}
+.speak.big{width:88px;height:88px}.speak.big svg{width:34px;height:34px}
+.sess{display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:var(--muted);margin:0 2px 8px;letter-spacing:.03em}
+.legend{font-size:12px;color:var(--muted);margin-top:4px}
+.legend b{color:var(--indigo)}
+.why li{margin:0 0 8px;font-size:14px}
+.why a{color:var(--indigo)}
+.answer{border-top:1px dashed var(--line);margin-top:14px;padding-top:6px}
 </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <div class="brand">単語 <small>Tango Sprint</small></div>
+    <div class="brand">火 <span>Tuesday</span></div>
     <div class="stats">
       <span class="chip" title="Day streak"><svg viewBox="0 0 24 24" fill="var(--accent)" aria-hidden="true"><path d="M12 2c1 4 5 5.5 5 10.5A5 5 0 0 1 7 12.5C7 10 8.5 8.6 9.5 7c.3 1.8 1.2 2.8 2.2 3.2C11.3 7.5 11.2 4.6 12 2z"/></svg><span id="streak">0</span></span>
-      <div class="ring" title="Today's XP vs daily goal"><svg width="38" height="38" viewBox="0 0 38 38"><circle cx="19" cy="19" r="15" fill="none" stroke="var(--surface-2)" stroke-width="5"/><circle id="ringArc" cx="19" cy="19" r="15" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="94.25" stroke-dashoffset="94.25"/></svg><span id="ringTxt">0</span></div>
+      <div class="ring" title="New words today vs daily goal"><svg width="38" height="38" viewBox="0 0 38 38"><circle cx="19" cy="19" r="15" fill="none" stroke="var(--surface-2)" stroke-width="5"/><circle id="ringArc" cx="19" cy="19" r="15" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="94.25" stroke-dashoffset="94.25"/></svg><span id="ringTxt">0</span></div>
     </div>
   </header>
   <main id="view"><div class="loading">Loading 3,000 words…</div></main>
@@ -144,7 +156,7 @@ input[type=search],select{width:100%;padding:10px 12px;border-radius:12px;border
 </div>
 <nav><div class="in">
   <button data-tab="study"><span class="jpn">学</span>Study</button>
-  <button data-tab="quiz"><span class="jpn">試</span>Quiz</button>
+  <button data-tab="quiz"><span class="jpn">試</span>Drill</button>
   <button data-tab="words"><span class="jpn">語</span>Words</button>
   <button data-tab="settings"><span class="jpn">設</span>Setup</button>
 </div></nav>
@@ -156,14 +168,15 @@ const $=s=>document.querySelector(s);
 const view=$('#view');
 const ICON_PLAY='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
 const MIN=60e3, HOUR=60*MIN, DAY=24*HOUR;
-const INTERVALS=[0,5*MIN,30*MIN,4*HOUR,DAY,3*DAY,7*DAY,21*DAY,60*DAY]; // by box
+// Successive relearning: after a word is recalled in-session, it returns after growing gaps.
+const INTERVALS=[0,HOUR,8*HOUR,DAY,2*DAY,4*DAY,8*DAY,16*DAY,32*DAY,64*DAY];
 let W=[], S=[];
 let tab='study';
 
 // ---------- state ----------
 const KEY='tango-sprint-v1';
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function freshState(){return {v:1,updated:0,unlocked:500,goal:100,autoplay:true,romaji:true,hira:true,rate:0.9,voice:'',w:{},xp:{},newDay:{},days:[]}}
+function freshState(){return {v:2,updated:0,unlocked:500,goal:100,batch:5,prod:true,listen:true,autoplay:true,romaji:true,hira:true,rate:0.9,voice:'',w:{},xp:{},newDay:{},days:[]}}
 let st=freshState();
 try{const raw=localStorage.getItem(KEY);if(raw)st=Object.assign(freshState(),JSON.parse(raw))}catch(e){}
 let db=null, docRef=null, writing=false, dirty=false, syncTimer=null;
@@ -186,26 +199,24 @@ async function initSync(){
     const id=await user.id(); if(!id)return;
     docRef=db.doc('data/users/'+id+'/progress');
     const snap=await docRef.get();
-    if(snap.exists){const r=snap.data(); if(r&&r.updated>st.updated){st=Object.assign(freshState(),JSON.parse(JSON.stringify(r)));try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){};render();toast('Progress synced from your other device')}}
+    if(snap.exists){const r=snap.data(); if(r&&r.updated>st.updated){st=Object.assign(freshState(),JSON.parse(JSON.stringify(r)));try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){};SQ=[];render();toast('Progress synced from your other device')}}
     else if(st.updated){dirty=true;pushRemote()}
   }catch(e){docRef=null}
 }
 
 // ---------- word status ----------
-const rec=i=>st.w[i];
 const isKnown=i=>{const r=st.w[i];return !!r&&r[0]>=1};
 const isMastered=i=>{const r=st.w[i];return !!r&&r[0]>=4};
-function setBox(i,box,extra){
+function setBox(i,box,lapse){
   const r=st.w[i]||[0,0,0,0];
   r[0]=Math.max(1,Math.min(box,INTERVALS.length-1)); r[1]=Date.now()+INTERVALS[r[0]]; r[2]++;
-  if(extra==='lapse')r[3]++;
-  if(extra==='soon')r[1]=Date.now()+2*MIN;
+  if(lapse)r[3]++;
   st.w[i]=r;
 }
 function addXP(n,el){
   const d=today(); st.xp[d]=(st.xp[d]||0)+n;
   if(!st.days.includes(d)){st.days.push(d);if(st.days.length>400)st.days.shift()}
-  if(el){const p=document.createElement('div');p.className='xp-pop';p.textContent='+'+n+' XP';el.appendChild(p);setTimeout(()=>p.remove(),900)}
+  if(el){const p=document.createElement('div');p.className='xp-pop';p.textContent='+'+n;el.appendChild(p);setTimeout(()=>p.remove(),900)}
   updateHeader();
 }
 function streak(){
@@ -216,9 +227,9 @@ function streak(){
 }
 function updateHeader(){
   $('#streak').textContent=streak();
-  const goalXP=st.goal*10, x=st.xp[today()]||0, f=Math.min(1,x/goalXP);
+  const n=st.newDay[today()]||0, f=Math.min(1,n/st.goal);
   $('#ringArc').setAttribute('stroke-dashoffset',(94.25*(1-f)).toFixed(2));
-  $('#ringTxt').textContent=f>=1?'✓':Math.round(f*100)+'%';
+  $('#ringTxt').textContent=f>=1?'✓':n;
 }
 function counts(){
   let known=0,mastered=0,due=0; const now=Date.now();
@@ -243,12 +254,12 @@ async function speak(text,slow){
       speechSynthesis.speak(u); return;
     }catch(e){}
   }
-  if(!ttsTried){ttsTried=true; try{tts=await window.claude.use('tts')}catch(e){tts=null}}
+  if(!ttsTried){ttsTried=true; try{tts=window.claude&&await window.claude.use('tts')}catch(e){tts=null}}
   if(tts){try{await tts.speak(text,{language:'ja',rate:Math.max(.7,rate)})}catch(e){}}
   else toast('No Japanese voice found on this device');
 }
 
-// ---------- sentences that use what you know ----------
+// ---------- sentences built from words you know ----------
 function pickSentences(i,n){
   const cands=W[i].s.map(si=>{
     const s=S[si], others=s.ids.filter(x=>x!==i);
@@ -258,104 +269,161 @@ function pickSentences(i,n){
   cands.sort((a,b)=>a.unknown-b.unknown||a.s.j.length-b.s.j.length);
   return cands.slice(0,n||3);
 }
-function esc(t){return t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function highlight(jp,w){
   const forms=[w.w,w.alt,w.k].filter(Boolean);
   for(const f of forms)if(jp.includes(f))return esc(jp).split(esc(f)).join('<mark>'+esc(f)+'</mark>');
   for(const f of forms){ const stem=f.slice(0,-1); if(stem.length>=2||/[一-鿿]/.test(stem)){ if(jp.includes(stem))return esc(jp).split(esc(stem)).join('<mark>'+esc(stem)+'</mark>');}}
   return esc(jp);
 }
+function sentenceJP(s,target){
+  const sp=s.sp||[];
+  if(!sp.some(x=>x[2]===target))return highlight(s.j,W[target]);
+  let out='',p=0;
+  for(const [a,l,r] of sp){
+    if(a<p)continue;
+    out+=esc(s.j.slice(p,a));
+    const t=esc(s.j.substr(a,l));
+    if(r===target)out+='<mark>'+t+'</mark>';
+    else if(isKnown(r))out+='<span class="kn" data-w="'+r+'">'+t+'</span>';
+    else out+='<span class="uw" data-w="'+r+'">'+t+'</span>';
+    p=a+l;
+  }
+  return out+esc(s.j.slice(p));
+}
 function sentHTML(i){
-  const w=W[i];
   return pickSentences(i,3).map(c=>{
     const cov=c.total===0?'':(c.unknown===0?'<div class="cov">You know every other word</div>':'<div class="cov low">You know '+c.known+' of '+c.total+' other words</div>');
     return '<div class="sent"><button class="speak mini" data-say="'+esc(c.s.j)+'" aria-label="Play sentence">'+ICON_PLAY+'</button><div>'+
-      '<div class="jp" lang="ja">'+highlight(c.s.j,w)+'</div>'+
+      '<div class="jp" lang="ja">'+sentenceJP(c.s,i)+'</div>'+
       (st.hira?'<div class="hira" lang="ja">'+esc(c.s.h)+'</div>':'')+
       '<div class="en">'+esc(c.s.e)+'</div>'+cov+'</div></div>';
-  }).join('');
+  }).join('')+'<div class="legend"><b>Blue</b> = words you have learned. Tap any word for its meaning.</div>';
 }
 
-// ---------- STUDY ----------
-let cur=null, sinceReview=0, revealed=false;
-function dueList(){const now=Date.now(),out=[];for(const k in st.w){const r=st.w[k];if(r[0]>=1&&r[1]<=now&&+k<st.unlocked)out.push(+k)}out.sort((a,b)=>st.w[a][1]-st.w[b][1]);return out}
-function nextNew(){for(let i=0;i<Math.min(st.unlocked,W.length);i++)if(!st.w[i])return i;return -1}
-function chooseNext(){
-  const due=dueList(), nw=nextNew();
-  if(due.length&&(sinceReview>=2||nw<0||due.length>15)){sinceReview=0;return {i:due[0],kind:'review'}}
-  if(nw>=0){sinceReview++;return {i:nw,kind:'new'}}
-  if(due.length)return {i:due[0],kind:'review'};
+// ---------- STUDY: learn in small batches, recall to criterion, relearn across sessions ----------
+let SQ=[], curT=null, revealed=false, reviewsSinceBatch=0, pend={}, roundTotal=0, roundDone=0;
+const inQueue=i=>SQ.some(t=>t.i===i)||(curT&&curT.i===i);
+function dueList(){const now=Date.now(),out=[];for(const k in st.w){const r=st.w[k];if(r[0]>=1&&r[1]<=now&&+k<st.unlocked&&!inQueue(+k))out.push(+k)}out.sort((a,b)=>st.w[a][1]-st.w[b][1]);return out}
+function nextNewList(n){const out=[];for(let i=0;i<Math.min(st.unlocked,W.length)&&out.length<n;i++)if(!st.w[i]&&!inQueue(i))out.push(i);return out}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function reviewMode(i){
+  const r=st.w[i]; let m=(r[2]%2===0)?'recv':'prod';
+  if(!st.prod)m='recv';
+  if(st.listen&&Math.random()<0.2)m='listen';
+  return m;
+}
+function refill(){
+  const due=dueList(), nw=nextNewList(st.batch);
+  if(due.length&&(reviewsSinceBatch<20||!nw.length)){
+    const take=due.slice(0,10);
+    take.forEach(i=>SQ.push({i,mode:reviewMode(i),src:'review',failed:false}));
+    reviewsSinceBatch+=take.length; roundTotal=SQ.length; roundDone=0; return 'review';
+  }
+  if(nw.length){
+    reviewsSinceBatch=0;
+    nw.forEach(i=>{SQ.push({i,mode:'intro',src:'new'});pend[i]=st.prod?2:1});
+    const r1=shuffle(nw.slice()); if(r1.length>1&&r1[0]===nw[nw.length-1])r1.push(r1.shift());
+    r1.forEach(i=>SQ.push({i,mode:'recv',src:'new',failed:false}));
+    if(st.prod)shuffle(nw.slice()).forEach(i=>SQ.push({i,mode:'prod',src:'new',failed:false}));
+    roundTotal=SQ.length; roundDone=0; return 'new';
+  }
   return null;
 }
 function poolBar(){
   const c=counts(), u=Math.min(st.unlocked,W.length);
   const fk=c.known-c.mastered;
-  return '<div class="pool"><div style="min-width:0"><b>'+c.known+'</b> learned of <b>'+u+'</b> unlocked'+
-    (c.due?' · <b>'+c.due+'</b> due':'')+'</div><div class="bar" aria-hidden="true"><i style="width:'+(c.mastered/u*100)+'%;background:var(--good)"></i><i style="width:'+(fk/u*100)+'%;background:var(--indigo)"></i></div>'+
+  return '<div class="pool"><div style="min-width:0"><b>'+c.known+'</b> learned of <b>'+u+'</b>'+
+    (c.due?' · <b>'+c.due+'</b> to relearn':'')+'</div><div class="bar" aria-hidden="true"><i style="width:'+(c.mastered/u*100)+'%;background:var(--good)"></i><i style="width:'+(fk/u*100)+'%;background:var(--indigo)"></i></div>'+
     (u<W.length?'<button class="btn small" data-act="unlock">+100</button>':'')+'</div>';
 }
-function wordHead(i,showAll){
-  const w=W[i];
-  return '<span class="rank">#'+(i+1)+'</span><div class="head"><div class="word" lang="ja">'+esc(w.w)+'</div>'+
-    '<div class="pron'+(showAll?'':' hidden')+'" data-rev>'+(w.w!==w.k?'<span class="kana" lang="ja">'+esc(w.k)+'</span>':'')+
-    (st.romaji?'<span class="romaji">'+esc(w.r)+'</span>':'')+'</div>'+
-    '<div class="pron" style="margin-top:6px"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button>'+
-    '<button class="speak slow" data-say="'+esc(w.k)+'" data-slow="1" aria-label="Play slowly">SLOW</button></div></div>';
+function pronHTML(w){
+  return '<div class="pron">'+(w.w!==w.k?'<span class="kana" lang="ja">'+esc(w.k)+'</span>':'')+(st.romaji?'<span class="romaji">'+esc(w.r)+'</span>':'')+'</div>';
+}
+function playBtns(w){
+  return '<div class="pron" style="margin-top:6px"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button>'+
+    '<button class="speak slow" data-say="'+esc(w.k)+'" data-slow="1" aria-label="Play slowly">SLOW</button></div>';
 }
 function meaningHTML(i){
   const w=W[i];
   return '<div class="meaning">'+esc(w.m[0]||'')+'</div>'+(w.m[1]?'<p class="meaning2">'+esc(w.m[1])+'</p>':'')+
     '<div class="pos">'+esc(w.p)+(w.alt?' · also written '+esc(w.alt):'')+'</div>';
 }
+function fullWord(i){
+  const w=W[i];
+  return '<div class="head"><div class="word" lang="ja">'+esc(w.w)+'</div>'+pronHTML(w)+playBtns(w)+'</div>'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div>';
+}
+const MODE_LABEL={intro:'New word',recv:'Recall: meaning',prod:'Recall: Japanese',listen:'Recall: listening'};
 function renderStudy(){
-  cur=chooseNext(); revealed=false;
-  if(!cur){
+  if(!SQ.length)refill();
+  curT=SQ.shift()||null; revealed=false;
+  if(!curT){
     const u=Math.min(st.unlocked,W.length);
-    view.innerHTML=poolBar()+'<div class="card empty"><div class="word" lang="ja">完了</div><h2>All caught up</h2><p>You have learned every unlocked word and nothing is due. Unlock more words or run a quiz.</p>'+
-      '<div class="actions two">'+(u<W.length?'<button class="btn primary" data-act="unlock">Unlock 100 more</button>':'')+'<button class="btn" data-tab="quiz">Take a quiz</button></div></div>';
+    view.innerHTML=poolBar()+'<div class="card empty"><div class="word" lang="ja">完了</div><h2>All caught up</h2><p>Every unlocked word is learned and nothing needs relearning yet. Unlock more words or run a drill.</p>'+
+      '<div class="actions two">'+(u<W.length?'<button class="btn primary" data-act="unlock">Unlock 100 more</button>':'')+'<button class="btn" data-tab="quiz">Drill</button></div></div>';
     return;
   }
-  const i=cur.i, isNew=cur.kind==='new';
-  revealed=isNew;
-  view.innerHTML=poolBar()+'<div class="card enter" id="card"><span class="tag'+(isNew?' new':'')+'">'+(isNew?'New word':'Review')+'</span>'+
-    wordHead(i,isNew)+'<div data-rev class="'+(isNew?'':'hidden')+'">'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div></div>'+
-    '<div class="dock">'+(isNew?
-      '<div class="actions two"><button class="btn ghost" data-act="knew">I already know it</button><button class="btn primary" data-act="learned">Got it, next</button></div><div class="hint">Keys: Space = got it · K = already know · S = play</div>'
-      :'<button class="btn primary reveal" style="margin-top:0" data-act="reveal" id="revealBtn">Show answer</button>'+
-       '<div class="actions three hidden" data-rev><button class="btn bad" data-act="miss">Missed</button><button class="btn" data-act="hard">Hard</button><button class="btn good" data-act="easy">Knew it</button></div><div class="hint">Keys: Space = show · 1 / 2 / 3 = grade · S = play</div>')+
-    '</div></div>';
+  roundDone++;
+  const i=curT.i, m=curT.mode, w=W[i];
+  const sess='<div class="sess"><span>'+(curT.src==='new'?'New batch':'Relearning')+'</span><span>'+roundDone+' / '+roundTotal+'</span></div>';
+  let body, dock;
+  if(m==='intro'){
+    body='<span class="rank">#'+(i+1)+'</span>'+fullWord(i);
+    dock='<div class="actions two"><button class="btn ghost" data-act="knew">I already know it</button><button class="btn primary" data-act="next">Got it</button></div><div class="hint">You will be asked to recall it in a moment. Keys: Space = next · K = already know</div>';
+  } else {
+    let prompt;
+    if(m==='recv')prompt='<div class="head"><div class="word" lang="ja">'+esc(w.w)+'</div></div><p class="ask">What does it mean? Answer in your head, then check.</p>';
+    if(m==='prod')prompt='<div class="head" style="padding-top:34px"><div class="bigm">'+esc(w.m[0])+'</div><div class="pos">'+esc(w.p)+'</div></div><p class="ask">Say the Japanese word out loud, then check.</p>';
+    if(m==='listen')prompt='<div class="head"><button class="speak big" data-say="'+esc(w.k)+'" aria-label="Play again">'+ICON_PLAY+'</button></div><p class="ask">What word is this, and what does it mean?</p>';
+    body='<span class="rank">#'+(i+1)+'</span>'+prompt+'<div class="answer hidden" data-rev>'+(m==='recv'?'<div class="head" style="padding-top:8px">'+pronHTML(w)+playBtns(w)+'</div>'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div>':fullWord(i))+'</div>';
+    dock='<button class="btn primary reveal" style="margin-top:0" data-act="reveal" id="revealBtn">Show answer</button>'+
+      '<div class="actions two hidden" data-rev><button class="btn bad" data-act="forgot">Forgot</button><button class="btn good" data-act="got">Got it</button></div><div class="hint">Keys: Space = show, then 1 = forgot · 2 or Space = got it</div>';
+  }
+  view.innerHTML=poolBar()+sess+'<div class="card enter" id="card"><span class="tag'+(m==='intro'?' new':'')+'">'+MODE_LABEL[m]+'</span>'+body+'<div class="dock">'+dock+'</div></div>';
   window.scrollTo(0,0);
-  if(st.autoplay)speak(W[i].k);
+  if(m==='listen'||(st.autoplay&&(m==='intro'||m==='recv')))speak(w.k);
 }
+function requeue(t,gap){SQ.splice(Math.min(gap,SQ.length),0,Object.assign({},t,{failed:true}))}
 function studyAct(a){
-  if(!cur)return; const i=cur.i, card=$('#card'); const before=counts().known;
-  if(a==='reveal'){revealed=true;document.querySelectorAll('[data-rev]').forEach(e=>e.classList.remove('hidden'));$('#revealBtn').classList.add('hidden');return}
-  if(a==='learned'){setBox(i,1);st.newDay[today()]=(st.newDay[today()]||0)+1;addXP(10,card)}
-  if(a==='knew'){setBox(i,4);addXP(4,card)}
-  if(a==='miss'){setBox(i,1,'lapse');st.w[i][1]=Date.now()+2*MIN;addXP(1,card)}
-  if(a==='hard'){const b=st.w[i][0];setBox(i,b);st.w[i][1]=Date.now()+Math.max(5*MIN,INTERVALS[b]/2);addXP(3,card)}
-  if(a==='easy'){setBox(i,st.w[i][0]+1);addXP(5,card)}
+  if(!curT)return; const t=curT, i=t.i, card=$('#card'); const before=counts().known;
+  if(a==='reveal'){revealed=true;document.querySelectorAll('[data-rev]').forEach(e=>e.classList.remove('hidden'));$('#revealBtn').classList.add('hidden');if(t.mode==='prod'||t.mode==='listen')speak(W[i].k);return}
+  if(a==='next'){addXP(2,card)}
+  if(a==='knew'){SQ=SQ.filter(x=>x.i!==i);delete pend[i];setBox(i,3);addXP(2,card);toast('Marked as known. It will be checked tomorrow.')}
+  if(a==='forgot'){requeue(t,3);roundTotal++;if(t.src==='review'&&!t.failed){st.w[i][3]++}addXP(1,card)}
+  if(a==='got'){
+    if(t.src==='new'){
+      pend[i]=(pend[i]||1)-1;
+      if(pend[i]<=0){delete pend[i];setBox(i,1);st.newDay[today()]=(st.newDay[today()]||0)+1}
+      addXP(5,card);
+    } else {
+      if(t.failed)setBox(i,1,true); else setBox(i,st.w[i][0]+1);
+      addXP(5,card);
+    }
+  }
   save(); checkMilestone(before,counts().known);
-  setTimeout(renderStudy,a==='reveal'?0:180);
+  if(!SQ.length&&t.src==='new'&&a!=='next')toast('Batch done. Those words come back in about an hour.');
+  setTimeout(renderStudy,150);
 }
 
-// ---------- QUIZ ----------
-let Q=null;
-function quizPool(){const ks=Object.keys(st.w).map(Number).filter(isKnown);return ks}
-function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function startQuiz(){
-  const pool=quizPool();
-  if(pool.length<4){Q=null;view.innerHTML='<div class="card empty"><div class="word" lang="ja">まだ</div><h2>Learn a few words first</h2><p>Quizzes use only words you have learned. Learn at least 4 in Study.</p><button class="btn primary" data-tab="study">Go to Study</button></div>';return}
-  // weight weaker + recently-learned words
-  const weighted=pool.map(i=>({i,w:Math.random()*(10-Math.min(st.w[i][0],8))+(st.w[i][3]||0)}));
-  weighted.sort((a,b)=>b.w-a.w);
-  const items=weighted.slice(0,10).map(x=>x.i);
+// ---------- DRILL (fast multiple choice) ----------
+let Q=null, qMode='mixed';
+function weakList(){return Object.keys(st.w).map(Number).filter(i=>isKnown(i)&&(st.w[i][3]>0||st.w[i][0]<=2))}
+function startQuiz(mode){
+  qMode=mode||'mixed';
+  const pool=Object.keys(st.w).map(Number).filter(isKnown);
+  if(pool.length<4){Q=null;view.innerHTML='<div class="card empty"><div class="word" lang="ja">まだ</div><h2>Learn a few words first</h2><p>Drills use only words you have learned. Learn at least 4 in Study.</p><button class="btn primary" data-tab="study">Go to Study</button></div>';return}
+  let items;
+  if(qMode==='weak'){items=shuffle(weakList()).slice(0,10); if(items.length<1){toast('No weak words right now');qMode='mixed'}}
+  if(qMode!=='weak'){
+    const weighted=pool.map(i=>({i,w:Math.random()*(10-Math.min(st.w[i][0],8))+(st.w[i][3]||0)}));
+    weighted.sort((a,b)=>b.w-a.w); items=weighted.slice(0,10).map(x=>x.i);
+  }
   Q={items,pos:0,score:0,combo:0,best:0,pool,answered:false};
   renderQ();
 }
 function renderQ(){
   if(Q.pos>=Q.items.length){
-    view.innerHTML='<div class="card empty"><div class="word" lang="ja">'+(Q.score>=9?'見事':Q.score>=6?'いいね':'もう一度')+'</div><h2>'+Q.score+' / '+Q.items.length+'</h2><p>Best combo: '+Q.best+'</p><div class="actions two"><button class="btn primary" data-act="qagain">Another round</button><button class="btn" data-tab="study">Back to Study</button></div></div>';
+    view.innerHTML='<div class="card empty"><div class="word" lang="ja">'+(Q.score>=Q.items.length*.9?'見事':Q.score>=Q.items.length*.6?'いいね':'もう一度')+'</div><h2>'+Q.score+' / '+Q.items.length+'</h2><p>Best combo: '+Q.best+'. Missed words go back into relearning.</p><div class="actions two"><button class="btn primary" data-act="qagain">Another round</button><button class="btn" data-tab="study">Back to Study</button></div></div>';
     return;
   }
   const i=Q.items[Q.pos], w=W[i];
@@ -364,13 +432,13 @@ function renderQ(){
   const opts=shuffle([i,...distract]);
   Q.cur={i,type,opts}; Q.answered=false;
   let prompt='';
-  if(type==='meaning')prompt='<div class="head"><div class="word" lang="ja">'+esc(w.w)+'</div><div class="pron"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button></div></div><p class="hint">What does it mean?</p>';
-  if(type==='reverse')prompt='<div class="head"><div class="meaning" style="font-size:24px">'+esc(w.m[0])+'</div></div><p class="hint">Pick the Japanese word</p>';
-  if(type==='listen')prompt='<div class="head"><button class="speak" style="width:84px;height:84px" data-say="'+esc(w.k)+'" aria-label="Play word again">'+ICON_PLAY+'</button></div><p class="hint">Listen, then pick the word</p>';
+  if(type==='meaning')prompt='<div class="head"><div class="word" lang="ja">'+esc(w.w)+'</div><div class="pron"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button></div></div><p class="ask">What does it mean?</p>';
+  if(type==='reverse')prompt='<div class="head" style="padding-top:20px"><div class="bigm">'+esc(w.m[0])+'</div></div><p class="ask">Pick the Japanese word</p>';
+  if(type==='listen')prompt='<div class="head"><button class="speak big" data-say="'+esc(w.k)+'" aria-label="Play word again">'+ICON_PLAY+'</button></div><p class="ask">Listen, then pick the word</p>';
   const optHTML=opts.map((x,n)=>type==='meaning'
     ?'<button class="opt" data-opt="'+x+'"><b>'+(n+1)+'.</b> '+esc(W[x].m[0])+'</button>'
     :'<button class="opt jpopt" data-opt="'+x+'" lang="ja">'+esc(W[x].w)+'</button>').join('');
-  view.innerHTML='<div class="card enter" id="card"><div class="qtop"><span>Question '+(Q.pos+1)+' of '+Q.items.length+'</span><span class="combo">'+(Q.combo>1?'Combo ×'+Q.combo:'')+'</span></div>'+
+  view.innerHTML='<div class="card enter" id="card"><div class="qtop"><span>'+(qMode==='weak'?'Weak words · ':'')+'Question '+(Q.pos+1)+' of '+Q.items.length+'</span><span class="combo">'+(Q.combo>1?'Combo ×'+Q.combo:'')+'</span></div>'+
     '<div class="progress"><i style="width:'+(Q.pos/Q.items.length*100)+'%"></i></div>'+prompt+'<div class="opts">'+optHTML+'</div><div id="qfb"></div></div>';
   if(type==='listen'||(type==='meaning'&&st.autoplay))speak(w.k);
 }
@@ -378,8 +446,8 @@ function answer(x){
   if(!Q||Q.answered)return; Q.answered=true;
   const {i}=Q.cur, ok=x===i, card=$('#card');
   document.querySelectorAll('.opt').forEach(b=>{const v=+b.dataset.opt;if(v===i)b.classList.add('right');else if(v===x)b.classList.add('wrong');b.disabled=true});
-  if(ok){Q.score++;Q.combo++;Q.best=Math.max(Q.best,Q.combo);const r=st.w[i];if(r[1]<=Date.now()+HOUR)setBox(i,r[0]+1);addXP(5+Math.min(Q.combo,5),card)}
-  else{Q.combo=0;setBox(i,1,'lapse');st.w[i][1]=Date.now()+2*MIN}
+  if(ok){Q.score++;Q.combo++;Q.best=Math.max(Q.best,Q.combo);addXP(3+Math.min(Q.combo,5),card)}
+  else{Q.combo=0;const r=st.w[i];r[0]=1;r[1]=Date.now();r[3]++;}
   save(); if(!ok||Q.cur.type!=='listen')speak(W[i].k);
   const w=W[i];
   $('#qfb').innerHTML='<div class="sent" style="margin-top:14px"><div><div class="jp" lang="ja"><b>'+esc(w.w)+'</b> '+esc(w.k)+(st.romaji?' · <i>'+esc(w.r)+'</i>':'')+'</div><div class="en">'+esc(w.m[0])+'</div></div></div><button class="btn primary reveal" data-act="qnext">Next</button>';
@@ -388,9 +456,10 @@ function answer(x){
 // ---------- WORDS ----------
 let wf={q:'',f:'all',lim:200};
 function renderWords(){
-  const u=Math.min(st.unlocked,W.length);
+  const nWeak=weakList().length;
   view.innerHTML='<input type="search" id="wq" placeholder="Search Japanese, kana, romaji or English" value="'+esc(wf.q)+'" aria-label="Search words">'+
-    '<div class="filters">'+[['all','All '+W.length],['unlocked','Unlocked'],['learned','Learned'],['weak','Weak'],['locked','Locked']].map(([k,l])=>'<button class="btn small" data-wf="'+k+'" aria-pressed="'+(wf.f===k)+'">'+l+'</button>').join('')+'</div><div class="list" id="wl"></div>';
+    '<div class="filters">'+[['all','All '+W.length],['unlocked','Unlocked'],['learned','Learned'],['weak','Weak'],['locked','Locked']].map(([k,l])=>'<button class="btn small" data-wf="'+k+'" aria-pressed="'+(wf.f===k)+'">'+l+'</button>').join('')+
+    (nWeak?'<button class="btn small primary" data-act="drillweak">Drill '+nWeak+' weak</button>':'')+'</div><div class="list" id="wl"></div>';
   fillWords();
   $('#wq').addEventListener('input',e=>{wf.q=e.target.value.trim().toLowerCase();wf.lim=200;fillWords()});
 }
@@ -404,28 +473,38 @@ function fillWords(){
     out.push(i); if(out.length>=wf.lim)break;
   }
   $('#wl').innerHTML=out.map(i=>{const w=W[i];return '<div class="row"><span class="n">#'+(i+1)+'</span><div style="min-width:0"><div class="w" lang="ja">'+esc(w.w)+'<small>'+esc(w.k!==w.w?w.k+' · ':'')+esc(w.r)+'</small></div><div class="m">'+esc(w.m[0])+'</div></div>'+
-    '<div style="display:flex;gap:8px;align-items:center"><span class="dot'+(isMastered(i)?' m':isKnown(i)?' l':'')+'" title="'+(isMastered(i)?'Mastered':isKnown(i)?'Learning':'Not learned')+'"></span><button class="speak mini" data-say="'+esc(w.k)+'" aria-label="Play">'+ICON_PLAY+'</button></div></div>'}).join('')+
+    '<div style="display:flex;gap:8px;align-items:center"><span class="dot'+(isMastered(i)?' m':isKnown(i)?' l':'')+'" title="'+(isMastered(i)?'Solid':isKnown(i)?'Learning':'Not learned')+'"></span><button class="speak mini" data-say="'+esc(w.k)+'" aria-label="Play">'+ICON_PLAY+'</button></div></div>'}).join('')+
     (out.length>=wf.lim?'<button class="btn" data-act="more">Show more</button>':'')+(out.length?'':'<p class="hint">No words match.</p>');
 }
 
 // ---------- SETTINGS ----------
+function seg(key,vals,label){return '<div class="seg">'+vals.map(v=>{const [val,l]=Array.isArray(v)?v:[v,label?label(v):v];return '<button class="btn small" data-k="'+key+'" data-v="'+val+'" aria-pressed="'+(st[key]===val)+'">'+l+'</button>'}).join('')+'</div>'}
 function renderSettings(){
   const u=Math.min(st.unlocked,W.length), c=counts();
   const voices=jaVoices.map(v=>'<option'+(v.name===st.voice?' selected':'')+'>'+esc(v.name)+'</option>').join('');
   view.innerHTML='<div class="set">'+
+  '<section><h3>How Tuesday teaches</h3><ul class="why" style="padding-left:18px;margin:6px 0 0">'+
+   '<li><b>Recall, don’t reread.</b> Each new word is tested a few cards after you first see it, and comes back until you recall it. Testing produced much better retention a week later than restudying in <a href="https://pubmed.ncbi.nlm.nih.gov/18276894/">Karpicke &amp; Roediger, Science 2008</a>.</li>'+
+   '<li><b>Relearn across sessions.</b> Recalled words return after about 1 hour, then 8 hours, 1 day, 2 days, 4 days and so on. Recalling across several spaced sessions is called successive relearning (<a href="https://openscholarship.wustl.edu/circle_book/8">Rawson &amp; Dunlosky</a>). The best gap grows with how long you need to remember (<a href="https://pubmed.ncbi.nlm.nih.gov/19076480/">Cepeda et al. 2008</a>).</li>'+
+   '<li><b>Both directions.</b> You recall the meaning from the Japanese and the Japanese from the meaning. Practice in one direction only partly transfers to the other (<a href="https://doi.org/10.1080/09658211.2024.2397043">Bernardi, Vaughn &amp; Dunlosky 2024</a>). Some reviews are listening only.</li>'+
+   '<li><b>Most frequent words first.</b> In English, the top 1,000 word families cover about 72% of typical text (<a href="https://lextutor.ca/research/nation_waring_97.html">Nation &amp; Waring 1997</a>). Here the words are ranked by how often they appear in 150,000 everyday Japanese sentences.</li>'+
+   '<li><b>Sentences you can read.</b> Examples are chosen from ones made mostly of words you already know. Learned words are marked in blue.</li></ul></section>'+
   '<section><h3>Vocabulary size</h3><p>Words unlock in frequency order. You have <b>'+u+'</b> unlocked and <b>'+c.known+'</b> learned. Add more whenever you like.</p>'+
    '<div class="seg">'+[100,250,500].map(n=>'<button class="btn small" data-add="'+n+'">+'+n+'</button>').join('')+'</div>'+
    '<p style="margin-top:10px">Or jump to a level:</p><div class="seg">'+[500,1000,2000,3000].map(n=>'<button class="btn small" data-lvl="'+n+'" aria-pressed="'+(u===n)+'">Top '+n+'</button>').join('')+'</div></section>'+
-  '<section><h3>Daily goal</h3><p>New words per day. The ring at the top fills as you earn XP toward it.</p><div class="seg">'+[50,100,150,200,300].map(n=>'<button class="btn small" data-goal="'+n+'" aria-pressed="'+(st.goal===n)+'">'+n+'</button>').join('')+'</div></section>'+
+  '<section><h3>Pace</h3><p>New words per batch. Smaller batches mean each word comes back sooner.</p>'+seg('batch',[3,5,8,10])+
+   '<p style="margin-top:10px">Daily goal (new words). The ring at the top counts them.</p>'+seg('goal',[50,100,150,200,300])+
+   '<label class="toggle" for="t4">Also recall Japanese from English<input type="checkbox" id="t4" data-set="prod"'+(st.prod?' checked':'')+'></label>'+
+   '<label class="toggle" for="t5">Include listening-only recall<input type="checkbox" id="t5" data-set="listen"'+(st.listen?' checked':'')+'></label></section>'+
   '<section><h3>Display and sound</h3>'+
    '<label class="toggle" for="t1">Play the word automatically<input type="checkbox" id="t1" data-set="autoplay"'+(st.autoplay?' checked':'')+'></label>'+
    '<label class="toggle" for="t2">Show romaji<input type="checkbox" id="t2" data-set="romaji"'+(st.romaji?' checked':'')+'></label>'+
    '<label class="toggle" for="t3">Show kana reading under sentences<input type="checkbox" id="t3" data-set="hira"'+(st.hira?' checked':'')+'></label>'+
-   '<p style="margin-top:8px">Speech speed</p><div class="seg">'+[[0.7,'Slower'],[0.9,'Normal'],[1.05,'Native']].map(([r,l])=>'<button class="btn small" data-rate="'+r+'" aria-pressed="'+(st.rate===r)+'">'+l+'</button>').join('')+'</div>'+
+   '<p style="margin-top:8px">Speech speed</p>'+seg('rate',[[0.7,'Slower'],[0.9,'Normal'],[1.05,'Native']])+
    (jaVoices.length>1?'<p style="margin-top:10px">Voice</p><select id="voiceSel" aria-label="Japanese voice"><option value="">Automatic</option>'+voices+'</select>':'')+
    '<p style="margin-top:10px">'+(jaVoices.length?jaVoices.length+' Japanese voice(s) found on this device.':'No Japanese voice listed yet. On iPhone add one in Settings › Accessibility › Spoken Content › Voices › Japanese.')+'</p>'+
    '<button class="btn small" data-say="こんにちは、よろしくお願いします">Test voice</button></section>'+
-  '<section><h3>Progress</h3><p>'+(docRef?'Saved to your account, so it follows you between phone and computer.':'Saved in this browser.')+'</p><button class="btn small bad" data-act="reset">Reset all progress</button></section>'+
+  '<section><h3>Progress</h3><p>'+(docRef?'Saved to your account, so it follows you between phone and computer.':'Saved in this browser on this device.')+'</p><button class="btn small bad" data-act="reset">Reset all progress</button></section>'+
   '</div>';
   const vs=$('#voiceSel'); if(vs)vs.addEventListener('change',e=>{st.voice=e.target.value;save()});
 }
@@ -435,14 +514,17 @@ function render(){
   document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));
   updateHeader();
   if(!W.length)return;
-  if(tab==='study')renderStudy(); else if(tab==='quiz')startQuiz(); else if(tab==='words')renderWords(); else renderSettings();
+  if(tab==='study'){if(curT){SQ.unshift(curT);curT=null;roundDone=Math.max(0,roundDone-1)}renderStudy()}
+  else if(tab==='quiz')startQuiz(); else if(tab==='words')renderWords(); else renderSettings();
   window.scrollTo(0,0);
 }
-function go(t){tab=t; if(location.hash!=='#'+t)history.replaceState(null,'','#'+t); render()}
-let toastT; function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)}
+function go(t){if(tab==='study'&&t!=='study'&&curT){SQ.unshift(curT);curT=null;roundDone=Math.max(0,roundDone-1)}tab=t; if(location.hash!=='#'+t)history.replaceState(null,'','#'+t); render()}
+let toastT; function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2600)}
 function unlock(n){const before=st.unlocked;st.unlocked=Math.min(W.length,st.unlocked+n);save();toast('Unlocked words #'+(before+1)+'–'+st.unlocked)}
 let resetArmed=false;
 document.addEventListener('click',e=>{
+  const wEl=e.target.closest('[data-w]');
+  if(wEl){const w=W[+wEl.dataset.w];toast(w.w+(w.k!==w.w?' ('+w.k+')':'')+' · '+w.m[0]+(isKnown(+wEl.dataset.w)?' · learned':''));speak(w.k);return}
   const t=e.target.closest('button,[data-say]'); if(!t)return;
   if(t.dataset.say){speak(t.dataset.say,!!t.dataset.slow);return}
   if(t.dataset.tab){go(t.dataset.tab);return}
@@ -450,32 +532,32 @@ document.addEventListener('click',e=>{
   if(t.dataset.wf){wf.f=t.dataset.wf;wf.lim=200;renderWords();return}
   if(t.dataset.add){unlock(+t.dataset.add);renderSettings();return}
   if(t.dataset.lvl){st.unlocked=Math.min(W.length,+t.dataset.lvl);save();toast('Vocabulary set to the top '+st.unlocked+' words');renderSettings();return}
-  if(t.dataset.goal){st.goal=+t.dataset.goal;save();renderSettings();updateHeader();return}
-  if(t.dataset.rate){st.rate=+t.dataset.rate;save();renderSettings();return}
+  if(t.dataset.k){st[t.dataset.k]=+t.dataset.v;save();renderSettings();updateHeader();return}
   const a=t.dataset.act; if(!a)return;
-  if(a==='unlock'){unlock(100);render();return}
+  if(a==='unlock'){unlock(100);if(tab==='study'&&!curT)renderStudy();else{const p=document.querySelector('.pool');if(p)p.outerHTML=poolBar()}return}
   if(a==='more'){wf.lim+=300;fillWords();return}
   if(a==='qnext'){Q.pos++;renderQ();return}
-  if(a==='qagain'){startQuiz();return}
+  if(a==='qagain'){startQuiz(qMode);return}
+  if(a==='drillweak'){tab='quiz';history.replaceState(null,'','#quiz');document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));startQuiz('weak');return}
   if(a==='reset'){if(!resetArmed){resetArmed=true;t.textContent='Tap again to erase everything';setTimeout(()=>{resetArmed=false},4000);return}
-    const keep={unlocked:500,goal:st.goal};st=Object.assign(freshState(),keep);save();toast('Progress reset');render();return}
+    st=Object.assign(freshState(),{goal:st.goal,batch:st.batch});SQ=[];curT=null;pend={};save();toast('Progress reset');render();return}
   studyAct(a);
 });
 document.addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.set;if(k){st[k]=e.target.checked;save()}});
 document.addEventListener('keydown',e=>{
   if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.metaKey||e.ctrlKey)return;
   const k=e.key.toLowerCase();
-  if(tab==='study'&&cur){
-    if(k==='s'){speak(W[cur.i].k);return}
-    if(cur.kind==='new'){if(k===' '||k==='enter'){e.preventDefault();studyAct('learned')}else if(k==='k')studyAct('knew')}
+  if(tab==='study'&&curT){
+    if(k==='s'){speak(W[curT.i].k);return}
+    if(curT.mode==='intro'){if(k===' '||k==='enter'){e.preventDefault();studyAct('next')}else if(k==='k')studyAct('knew')}
     else if(!revealed){if(k===' '||k==='enter'){e.preventDefault();studyAct('reveal')}}
-    else{if(k==='1')studyAct('miss');if(k==='2')studyAct('hard');if(k==='3'||k===' '){e.preventDefault();studyAct('easy')}}
+    else{if(k==='1')studyAct('forgot');if(k==='2'||k===' '||k==='enter'){e.preventDefault();studyAct('got')}}
   } else if(tab==='quiz'&&Q&&Q.cur){
     if(!Q.answered&&/^[1-4]$/.test(k))answer(Q.cur.opts[+k-1]);
     else if(Q.answered&&(k===' '||k==='enter')){e.preventDefault();Q.pos++;renderQ()}
   }
 });
-window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(['study','quiz','words','settings'].includes(h)&&h!==tab){tab=h;render()}});
+window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(['study','quiz','words','settings'].includes(h)&&h!==tab){go(h)}});
 
 // ---------- boot ----------
 const h=location.hash.slice(1); if(['study','quiz','words','settings'].includes(h))tab=h;
