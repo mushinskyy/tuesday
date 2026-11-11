@@ -146,6 +146,8 @@ input[type=search],select{width:100%;padding:10px 12px;border-radius:12px;border
 .tk span{font-size:13px;color:var(--muted)}
 .tk small{font-size:12px;color:var(--indigo);font-weight:500}
 .tk.p{font-size:13px;color:var(--muted)}
+.optr{display:block;font-family:var(--body);font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
+.word.lg{font-size:clamp(36px,11vw,56px)}.word.xl{font-size:clamp(26px,7.5vw,40px)}
 </style>
 </head>
 <body>
@@ -187,6 +189,7 @@ let st=freshState();
 try{const raw=localStorage.getItem(KEY);if(raw)st=Object.assign(freshState(),JSON.parse(raw))}catch(e){}
 let db=null, docRef=null, writing=false, dirty=false, syncTimer=null;
 function save(){
+  try{const q=(curT?[curT]:[]).concat(SQ).map(t=>({i:t.i,mode:t.mode,src:t.src,failed:!!t.failed}));st.sess={q,pend,rt:roundTotal,rd:Math.max(0,roundDone-(curT?1:0))}}catch(e){}
   st.updated=Date.now();
   try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}
   dirty=true; clearTimeout(syncTimer); syncTimer=setTimeout(pushRemote,2500);
@@ -205,7 +208,7 @@ async function initSync(){
     const id=await user.id(); if(!id)return;
     docRef=db.doc('data/users/'+id+'/progress');
     const snap=await docRef.get();
-    if(snap.exists){const r=snap.data(); if(r&&r.updated>st.updated){st=Object.assign(freshState(),JSON.parse(JSON.stringify(r)));try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){};SQ=[];render();toast('Progress synced from your other device')}}
+    if(snap.exists){const r=snap.data(); if(r&&r.updated>st.updated){st=Object.assign(freshState(),JSON.parse(JSON.stringify(r)));try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){};SQ=[];curT=null;restoreSession();render();toast('Progress synced from your other device')}}
     else if(st.updated){dirty=true;pushRemote()}
   }catch(e){docRef=null}
 }
@@ -316,11 +319,13 @@ function sentHTML(i){
 // ---------- STUDY: learn in small batches, recall to criterion, relearn across sessions ----------
 let SQ=[], curT=null, revealed=false, reviewsSinceBatch=0, pend={}, roundTotal=0, roundDone=0;
 const inQueue=i=>SQ.some(t=>t.i===i)||(curT&&curT.i===i);
-function dueList(){const now=Date.now(),out=[];for(const k in st.w){const r=st.w[k];if(r[0]>=1&&r[1]<=now&&+k<st.unlocked&&!inQueue(+k))out.push(+k)}out.sort((a,b)=>st.w[a][1]-st.w[b][1]);return out}
-function nextNewList(n){const out=[];for(let i=0;i<Math.min(st.unlocked,W.length)&&out.length<n;i++)if(!st.w[i]&&!inQueue(i))out.push(i);return out}
+function dueList(){const now=Date.now(),out=[];for(const k in st.w){const r=st.w[k];if(r[1]<=now&&!inQueue(+k))out.push(+k)}out.sort((a,b)=>st.w[a][1]-st.w[b][1]);return out}
+// weighted sample without replacement: earlier items (more frequent / more overdue) are likelier, but order is never fixed
+function wsample(list,n,spread){const pool=list.map((x,k)=>({x,w:1/(1+k/spread)})),out=[];while(out.length<n&&pool.length){let tot=0;for(const p of pool)tot+=p.w;let r=Math.random()*tot,j=0;for(;j<pool.length-1;j++){r-=pool[j].w;if(r<=0)break}out.push(pool[j].x);pool.splice(j,1)}return out}
+function nextNewList(n){const cand=[];for(let i=0;i<Math.min(st.unlocked,W.length)&&cand.length<40;i++)if(!st.w[i]&&!inQueue(i))cand.push(i);return wsample(cand,n,8)}
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function reviewMode(i){
-  const r=st.w[i]; let m=(r[2]%2===0)?'recv':'prod';
+  const r=st.w[i]||[0,0,0,0]; let m=(r[2]%2===0)?'recv':'prod';
   if(!st.prod)m='recv';
   if(st.listen&&Math.random()<0.2)m='listen';
   return m;
@@ -328,16 +333,20 @@ function reviewMode(i){
 function refill(){
   const due=dueList(), nw=nextNewList(st.batch);
   if(due.length&&(reviewsSinceBatch<20||!nw.length)){
-    const take=due.slice(0,10);
+    const take=wsample(due,10,6);
     take.forEach(i=>SQ.push({i,mode:reviewMode(i),src:'review',failed:false}));
     reviewsSinceBatch+=take.length; roundTotal=SQ.length; roundDone=0; return 'review';
   }
   if(nw.length){
     reviewsSinceBatch=0;
-    nw.forEach(i=>{SQ.push({i,mode:'intro',src:'new'});pend[i]=st.prod?2:1});
+    // saved the moment it is introduced, so nothing is lost if the app closes
+    nw.forEach(i=>{SQ.push({i,mode:'intro',src:'new'});pend[i]=st.prod?2:1;st.w[i]=[0,Date.now(),0,0]});
     const r1=shuffle(nw.slice()); if(r1.length>1&&r1[0]===nw[nw.length-1])r1.push(r1.shift());
-    r1.forEach(i=>SQ.push({i,mode:'recv',src:'new',failed:false}));
-    if(st.prod)shuffle(nw.slice()).forEach(i=>SQ.push({i,mode:'prod',src:'new',failed:false}));
+    const tests=r1.map(i=>({i,mode:'recv',src:'new',failed:false}));
+    if(st.prod)shuffle(nw.slice()).forEach(i=>tests.push({i,mode:'prod',src:'new',failed:false}));
+    // mix a few older words into the batch's recall cards
+    wsample(due,Math.min(3,due.length),6).forEach(i=>tests.splice(1+Math.floor(Math.random()*tests.length),0,{i,mode:reviewMode(i),src:'review',failed:false}));
+    tests.forEach(t=>SQ.push(t));
     roundTotal=SQ.length; roundDone=0; return 'new';
   }
   return null;
@@ -363,7 +372,7 @@ function meaningHTML(i){
 }
 function fullWord(i){
   const w=W[i];
-  return '<div class="head"><div class="word" lang="ja">'+esc(w.w)+'</div>'+pronHTML(w)+playBtns(w)+'</div>'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div>';
+  return '<div class="head"><div class="word'+(w.w.length>6?' xl':w.w.length>4?' lg':'')+'" lang="ja">'+esc(w.w)+'</div>'+pronHTML(w)+playBtns(w)+'</div>'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div>';
 }
 const MODE_LABEL={intro:'New word',recv:'Recall: meaning',prod:'Recall: Japanese',listen:'Recall: listening'};
 function renderStudy(){
@@ -381,13 +390,13 @@ function renderStudy(){
   let body, dock;
   if(m==='intro'){
     body='<span class="rank">#'+(i+1)+'</span>'+fullWord(i);
-    dock='<div class="actions two"><button class="btn ghost" data-act="knew">I already know it</button><button class="btn primary" data-act="next">Got it</button></div><div class="hint">You will be asked to recall it in a moment. Keys: Space = next · K = already know</div>';
+    dock='<div class="actions two"><button class="btn ghost" data-act="knew">I already know it</button><button class="btn primary" data-act="next">Got it</button></div><div class="hint">Keys: Space = got it · K = already know</div>';
   } else {
     let prompt;
-    if(m==='recv')prompt='<div class="head"><div class="word" lang="ja">'+esc(w.w)+'</div></div><p class="ask">What does it mean? Answer in your head, then check.</p>';
+    if(m==='recv')prompt='<div class="head"><div class="word'+(w.w.length>6?' xl':w.w.length>4?' lg':'')+'" lang="ja">'+esc(w.w)+'</div>'+pronHTML(w)+'</div><p class="ask">What does it mean? Answer in your head, then check.</p>';
     if(m==='prod')prompt='<div class="head" style="padding-top:34px"><div class="bigm">'+esc(w.m[0])+'</div><div class="pos">'+esc(w.p)+'</div></div><p class="ask">Say the Japanese word out loud, then check.</p>';
     if(m==='listen')prompt='<div class="head"><button class="speak big" data-say="'+esc(w.k)+'" aria-label="Play again">'+ICON_PLAY+'</button></div><p class="ask">What word is this, and what does it mean?</p>';
-    body='<span class="rank">#'+(i+1)+'</span>'+prompt+'<div class="answer hidden" data-rev>'+(m==='recv'?'<div class="head" style="padding-top:8px">'+pronHTML(w)+playBtns(w)+'</div>'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div>':fullWord(i))+'</div>';
+    body='<span class="rank">#'+(i+1)+'</span>'+prompt+'<div class="answer hidden" data-rev>'+(m==='recv'?'<div class="head" style="padding-top:8px">'+playBtns(w)+'</div>'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div>':fullWord(i))+'</div>';
     dock='<button class="btn primary reveal" style="margin-top:0" data-act="reveal" id="revealBtn">Show answer</button>'+
       '<div class="actions two hidden" data-rev><button class="btn bad" data-act="forgot">Forgot</button><button class="btn good" data-act="got">Got it</button></div><div class="hint">Keys: Space = show, then 1 = forgot · 2 or Space = got it</div>';
   }
@@ -399,21 +408,24 @@ function requeue(t,gap){SQ.splice(Math.min(gap,SQ.length),0,Object.assign({},t,{
 function studyAct(a){
   if(!curT)return; const t=curT, i=t.i, card=$('#card'); const before=counts().known;
   if(a==='reveal'){revealed=true;document.querySelectorAll('[data-rev]').forEach(e=>e.classList.remove('hidden'));$('#revealBtn').classList.add('hidden');if(t.mode==='prod'||t.mode==='listen')speak(W[i].k);return}
-  if(a==='next'){addXP(2,card)}
+  if(a==='next'){if(!st.w[i]||st.w[i][0]===0){setBox(i,1);st.newDay[today()]=(st.newDay[today()]||0)+1}addXP(4,card)}
   if(a==='knew'){SQ=SQ.filter(x=>x.i!==i);delete pend[i];setBox(i,3);addXP(2,card);toast('Marked as known. It will be checked tomorrow.')}
   if(a==='forgot'){requeue(t,3);roundTotal++;if(t.src==='review'&&!t.failed){st.w[i][3]++}addXP(1,card)}
   if(a==='got'){
     if(t.src==='new'){
       pend[i]=(pend[i]||1)-1;
-      if(pend[i]<=0){delete pend[i];setBox(i,1);st.newDay[today()]=(st.newDay[today()]||0)+1}
+      if(pend[i]<=0)delete pend[i];
+      if(t.failed&&st.w[i])st.w[i][1]=Date.now()+INTERVALS[1];
       addXP(5,card);
     } else {
-      if(t.failed)setBox(i,1,true); else setBox(i,st.w[i][0]+1);
+      if(st.w[i][0]===0){if(!t.failed){setBox(i,1);st.newDay[today()]=(st.newDay[today()]||0)+1}}
+      else if(t.failed)setBox(i,1,true); else setBox(i,st.w[i][0]+1);
       addXP(5,card);
     }
   }
   save(); checkMilestone(before,counts().known);
-  if(!SQ.length&&t.src==='new'&&a!=='next')toast('Batch done. Those words come back in about an hour.');
+  if(!SQ.length&&t.src==='new'&&a!=='next')toast('Batch done. These words come back in about an hour.');
+  if(a==='next')toast(W[i].w+' learned');
   setTimeout(renderStudy,150);
 }
 
@@ -444,12 +456,12 @@ function renderQ(){
   const opts=shuffle([i,...distract]);
   Q.cur={i,type,opts}; Q.answered=false;
   let prompt='';
-  if(type==='meaning')prompt='<div class="head"><div class="word" lang="ja">'+esc(w.w)+'</div><div class="pron"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button></div></div><p class="ask">What does it mean?</p>';
+  if(type==='meaning')prompt='<div class="head"><div class="word'+(w.w.length>6?' xl':w.w.length>4?' lg':'')+'" lang="ja">'+esc(w.w)+'</div>'+pronHTML(w)+'<div class="pron"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button></div></div><p class="ask">What does it mean?</p>';
   if(type==='reverse')prompt='<div class="head" style="padding-top:20px"><div class="bigm">'+esc(w.m[0])+'</div></div><p class="ask">Pick the Japanese word</p>';
   if(type==='listen')prompt='<div class="head"><button class="speak big" data-say="'+esc(w.k)+'" aria-label="Play word again">'+ICON_PLAY+'</button></div><p class="ask">Listen, then pick the word</p>';
   const optHTML=opts.map((x,n)=>type==='meaning'
     ?'<button class="opt" data-opt="'+x+'"><b>'+(n+1)+'.</b> '+esc(W[x].m[0])+'</button>'
-    :'<button class="opt jpopt" data-opt="'+x+'" lang="ja">'+esc(W[x].w)+'</button>').join('');
+    :'<button class="opt jpopt" data-opt="'+x+'"><span lang="ja">'+esc(W[x].w)+'</span>'+(st.romaji?'<small class="optr">'+(W[x].w!==W[x].k?esc(W[x].k)+' · ':'')+esc(W[x].r)+'</small>':'')+'</button>').join('');
   view.innerHTML='<div class="card enter" id="card"><div class="qtop"><span>'+(qMode==='weak'?'Weak words · ':'')+'Question '+(Q.pos+1)+' of '+Q.items.length+'</span><span class="combo">'+(Q.combo>1?'Combo ×'+Q.combo:'')+'</span></div>'+
     '<div class="progress"><i style="width:'+(Q.pos/Q.items.length*100)+'%"></i></div>'+prompt+'<div class="opts">'+optHTML+'</div><div id="qfb"></div></div>';
   if(type==='listen'||(type==='meaning'&&st.autoplay))speak(w.k);
@@ -521,6 +533,17 @@ function renderSettings(){
   const vs=$('#voiceSel'); if(vs)vs.addEventListener('change',e=>{st.voice=e.target.value;save()});
 }
 
+function restoreSession(){
+  const ss=st.sess; if(!ss||!Array.isArray(ss.q))return;
+  SQ=ss.q.filter(t=>W[t.i]&&(t.mode!=='intro'||st.w[t.i])); pend=ss.pend||{}; roundTotal=ss.rt||SQ.length; roundDone=ss.rd||0;
+}
+function storageCheck(){
+  let ok=false; try{localStorage.setItem('tuesday-probe','1');ok=localStorage.getItem('tuesday-probe')==='1'}catch(e){}
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+  if(!ok)setTimeout(()=>toast('This browser is not keeping saved progress (private mode?). Open the link in Safari normally.'),800);
+}
+storageCheck();
+
 // ---------- routing & events ----------
 function render(){
   document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));
@@ -552,7 +575,7 @@ document.addEventListener('click',e=>{
   if(a==='qagain'){startQuiz(qMode);return}
   if(a==='drillweak'){tab='quiz';history.replaceState(null,'','#quiz');document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));startQuiz('weak');return}
   if(a==='reset'){if(!resetArmed){resetArmed=true;t.textContent='Tap again to erase everything';setTimeout(()=>{resetArmed=false},4000);return}
-    st=Object.assign(freshState(),{goal:st.goal,batch:st.batch});SQ=[];curT=null;pend={};save();toast('Progress reset');render();return}
+    SQ=[];curT=null;pend={};st=Object.assign(freshState(),{goal:st.goal,batch:st.batch});save();toast('Progress reset');render();return}
   studyAct(a);
 });
 document.addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.set;if(k){st[k]=e.target.checked;save()}});
@@ -574,7 +597,7 @@ window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(['st
 // ---------- boot ----------
 const h=location.hash.slice(1); if(['study','quiz','words','settings'].includes(h))tab=h;
 updateHeader();
-fetch('data.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(d=>{W=d.words;S=d.sents;render();initSync()})
+fetch('data.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(d=>{W=d.words;S=d.sents;restoreSession();render();initSync()})
   .catch(()=>{view.innerHTML='<div class="card empty"><h2>Could not load the word list</h2><p>Check your connection and reload the page.</p></div>'});
 })();
 </script>
