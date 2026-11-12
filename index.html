@@ -148,6 +148,38 @@ input[type=search],select{width:100%;padding:10px 12px;border-radius:12px;border
 .tk.p{font-size:13px;color:var(--muted)}
 .optr{display:block;font-family:var(--body);font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
 .word.lg{font-size:clamp(36px,11vw,56px)}.word.xl{font-size:clamp(26px,7.5vw,40px)}
+.speak.slow{width:auto;height:36px;padding:0 14px;border-radius:999px;font-size:12px;letter-spacing:.04em}
+.toks{display:flex;flex-wrap:wrap;gap:4px 5px;align-items:flex-start}
+.tok{display:inline-flex;flex-direction:column;align-items:center;border-radius:8px;padding:1px 2px;cursor:pointer}
+.tok.p{cursor:default}
+.tok .tm{font-size:19px;line-height:1.35}
+.tok .tk2{font-size:11px;color:var(--muted);line-height:1.2}
+.tok .tr{font-size:11px;color:var(--indigo);font-weight:500;line-height:1.25}
+.tok.kn .tm{color:var(--indigo);box-shadow:inset 0 -2px 0 var(--indigo)}
+.tok.tgt .tm{color:var(--accent);font-weight:700}
+.tok:active,.tok:hover{background:color-mix(in srgb,var(--indigo) 10%,transparent)}
+.word [data-c]{cursor:pointer}
+.kana.small{font-size:14px;color:var(--muted)}
+.whyb{margin-top:16px;padding:12px 14px;border-radius:14px;border:1px dashed var(--line)}
+.wh{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.wn{font-size:13px;color:var(--muted);margin:4px 0}
+.kl{display:flex;gap:10px;align-items:baseline;font-size:15px;margin:4px 0}
+.kl small{color:var(--muted)}
+.kc{font-family:var(--display);font-size:24px;font-weight:800;min-width:28px}
+.snd{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}
+.snd span{display:inline-flex;flex-direction:column;align-items:center;background:var(--surface-2);border-radius:8px;padding:4px 8px}
+.snd b{font-size:18px}.snd small{font-size:12px;color:var(--indigo)}
+#pop{position:absolute;z-index:20;width:max-content;max-width:min(340px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 40px -14px rgba(10,14,40,.45);padding:12px 14px;display:none}
+#pop.on{display:block}
+.ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pw{font-family:var(--display);font-size:28px;font-weight:800}
+.pk{font-size:15px;color:var(--muted)}
+.pr{font-size:14px;color:var(--indigo);font-style:italic}
+.pm{font-size:16px;font-weight:700;margin:6px 0 2px}
+.pm small{font-weight:400;color:var(--muted)}
+.pd{font-size:13px;color:var(--muted);margin:4px 0}
+.pst{font-size:12px;font-weight:700;color:var(--muted);margin-top:6px}
+.pst.ok{color:var(--good)}
 </style>
 </head>
 <body>
@@ -169,6 +201,7 @@ input[type=search],select{width:100%;padding:10px 12px;border-radius:12px;border
   <button data-tab="settings"><span class="jpn">設</span>Setup</button>
 </div></nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div id="pop" role="dialog" aria-label="Word details"></div>
 <script>
 (function(){
 "use strict";
@@ -178,13 +211,13 @@ const ICON_PLAY='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
 const MIN=60e3, HOUR=60*MIN, DAY=24*HOUR;
 // Successive relearning: after a word is recalled in-session, it returns after growing gaps.
 const INTERVALS=[0,HOUR,8*HOUR,DAY,2*DAY,4*DAY,8*DAY,16*DAY,32*DAY,64*DAY];
-let W=[], S=[];
+let W=[], S=[], G=[], K={}, ORDER=[], POS={};
 let tab='study';
 
 // ---------- state ----------
 const KEY='tango-sprint-v1';
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function freshState(){return {v:2,updated:0,unlocked:500,goal:100,batch:5,prod:true,listen:true,autoplay:true,romaji:true,hira:true,rate:0.9,voice:'',w:{},xp:{},newDay:{},days:[]}}
+function freshState(){return {v:2,updated:0,unlocked:500,goal:100,batch:5,prod:true,listen:true,autoplay:true,romaji:true,hira:true,rate:0.9,voice:'',script:'kanji',w:{},xp:{},newDay:{},days:[]}}
 let st=freshState();
 try{const raw=localStorage.getItem(KEY);if(raw)st=Object.assign(freshState(),JSON.parse(raw))}catch(e){}
 let db=null, docRef=null, writing=false, dirty=false, syncTimer=null;
@@ -269,51 +302,97 @@ async function speak(text,slow){
 }
 
 // ---------- sentences built from words you know ----------
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+const lab=i=>W[i]&&W[i].pt?'grammar':'#'+(i+1);
+const dw=w=>st.script==='kana'?w.k:w.w;
 function pickSentences(i,n){
   const cands=W[i].s.map(si=>{
-    const s=S[si], others=s.ids.filter(x=>x!==i);
-    const known=others.filter(isKnown).length;
+    const s=S[si], others=s.t.filter(t=>t[1]&&t[4]!==i);
+    const known=others.filter(t=>t[4]>=0&&isKnown(t[4])).length;
     return {si,s,known,total:others.length,unknown:others.length-known};
   });
   cands.sort((a,b)=>a.unknown-b.unknown||a.s.j.length-b.s.j.length);
   return cands.slice(0,n||3);
 }
-function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function highlight(jp,w){
-  const forms=[w.w,w.alt,w.k].filter(Boolean);
-  for(const f of forms)if(jp.includes(f))return esc(jp).split(esc(f)).join('<mark>'+esc(f)+'</mark>');
-  for(const f of forms){ const stem=f.slice(0,-1); if(stem.length>=2||/[一-鿿]/.test(stem)){ if(jp.includes(stem))return esc(jp).split(esc(stem)).join('<mark>'+esc(stem)+'</mark>');}}
-  return esc(jp);
-}
-function sentenceJP(s,target){
-  const sp=s.sp||[];
-  if(!sp.some(x=>x[2]===target))return highlight(s.j,W[target]);
-  let out='',p=0;
-  for(const [a,l,r] of sp){
-    if(a<p)continue;
-    out+=esc(s.j.slice(p,a));
-    const t=esc(s.j.substr(a,l));
-    if(r===target)out+='<mark>'+t+'</mark>';
-    else if(isKnown(r))out+='<span class="kn" data-w="'+r+'">'+t+'</span>';
-    else out+='<span class="uw" data-w="'+r+'">'+t+'</span>';
-    p=a+l;
-  }
-  return out+esc(s.j.slice(p));
-}
-function readingHTML(s){
-  if(!st.hira&&!st.romaji)return '';
-  const ks=s.h.split('|'), rs=(s.r||'').split('|');
-  if(!st.romaji)return '<div class="hira" lang="ja">'+esc(ks.join(''))+'</div>';
-  return '<div class="ruby">'+ks.map((k,n)=>rs[n]?'<span class="tk">'+(st.hira?'<span lang="ja">'+esc(k)+'</span>':'')+'<small>'+esc(rs[n])+'</small></span>':'').join('')+'</div>';
+function tokRow(s,si,target){
+  return '<div class="toks" lang="ja">'+s.t.map((t,x)=>{
+    const [sur,k,r,gid,rank]=t;
+    if(!k)return '<span class="tok p"><span class="tm">'+esc(sur)+'</span></span>';
+    const main=st.script==='kana'?k:sur;
+    const cls=rank===target?' tgt':(rank>=0&&isKnown(rank)?' kn':'');
+    const showK=st.hira&&st.script!=='kana'&&k!==sur;
+    return '<span class="tok'+cls+'" data-s="'+si+'" data-x="'+x+'"><span class="tm">'+esc(main)+'</span>'+(showK?'<span class="tk2">'+esc(k)+'</span>':'')+(st.romaji&&r?'<span class="tr">'+esc(r)+'</span>':'')+'</span>';
+  }).join('')+'</div>';
 }
 function sentHTML(i){
   return pickSentences(i,3).map(c=>{
     const cov=c.total===0?'':(c.unknown===0?'<div class="cov">You know every other word</div>':'<div class="cov low">You know '+c.known+' of '+c.total+' other words</div>');
-    return '<div class="sent"><button class="speak mini" data-say="'+esc(c.s.j)+'" aria-label="Play sentence">'+ICON_PLAY+'</button><div>'+
-      '<div class="jp" lang="ja">'+sentenceJP(c.s,i)+'</div>'+
-      readingHTML(c.s)+
-      '<div class="en">'+esc(c.s.e)+'</div>'+cov+'</div></div>';
+    return '<div class="sent"><button class="speak mini" data-say="'+esc(c.s.j)+'" aria-label="Play sentence">'+ICON_PLAY+'</button><div style="min-width:0">'+
+      tokRow(c.s,c.si,i)+'<div class="en">'+esc(c.s.e)+'</div>'+cov+'</div></div>';
   }).join('')+'<div class="legend"><b>Blue</b> = words you have learned. Tap any word for its meaning.</div>';
+}
+// ---------- kana sounds, kanji meanings, popups ----------
+const KR={'あ':'a','い':'i','う':'u','え':'e','お':'o','か':'ka','き':'ki','く':'ku','け':'ke','こ':'ko','が':'ga','ぎ':'gi','ぐ':'gu','げ':'ge','ご':'go','さ':'sa','し':'shi','す':'su','せ':'se','そ':'so','ざ':'za','じ':'ji','ず':'zu','ぜ':'ze','ぞ':'zo','た':'ta','ち':'chi','つ':'tsu','て':'te','と':'to','だ':'da','ぢ':'ji','づ':'zu','で':'de','ど':'do','な':'na','に':'ni','ぬ':'nu','ね':'ne','の':'no','は':'ha','ひ':'hi','ふ':'fu','へ':'he','ほ':'ho','ば':'ba','び':'bi','ぶ':'bu','べ':'be','ぼ':'bo','ぱ':'pa','ぴ':'pi','ぷ':'pu','ぺ':'pe','ぽ':'po','ま':'ma','み':'mi','む':'mu','め':'me','も':'mo','や':'ya','ゆ':'yu','よ':'yo','ら':'ra','り':'ri','る':'ru','れ':'re','ろ':'ro','わ':'wa','を':'o','ん':'n','ゔ':'vu','ぁ':'a','ぃ':'i','ぅ':'u','ぇ':'e','ぉ':'o'};
+const SMALL={'ゃ':'ya','ゅ':'yu','ょ':'yo'};
+const toHira=c=>{const o=c.charCodeAt(0);return (o>=0x30a1&&o<=0x30f6)?String.fromCharCode(o-0x60):c};
+function morae(str){
+  const out=[]; const cs=[...str];
+  for(let n=0;n<cs.length;n++){
+    const c=cs[n], h=toHira(c), nx=cs[n+1]?toHira(cs[n+1]):'';
+    if(SMALL[nx]&&KR[h]){const base=KR[h];const r=(base==='shi'||base==='chi'||base==='ji')?base.slice(0,-1)+SMALL[nx].slice(1):base.slice(0,-1)+SMALL[nx];out.push([c+cs[n+1],r]);n++;continue}
+    if(h==='っ'){out.push([c,'(double next sound)']);continue}
+    if(c==='ー'){out.push([c,'(long vowel)']);continue}
+    out.push([c,KR[h]||'?']);
+  }
+  return out;
+}
+const isKanji=c=>/[一-鿿々]/.test(c);
+const isKata=str=>/^[゠-ヿ]+$/.test(str);
+function kanjiLine(c){const k=K[c];if(!k)return '';return '<div class="kl"><span class="kc" lang="ja">'+esc(c)+'</span><span>'+esc(k[0].join(', '))+(k[1].length||k[2].length?'<small> · read '+esc(k[1].concat(k[2]).join(', '))+'</small>':'')+'</span></div>'}
+function soundsLine(str){return '<div class="snd" lang="ja">'+morae(str).map(([k,r])=>'<span><b>'+esc(k)+'</b><small>'+esc(r)+'</small></span>').join('')+'</div>'}
+function whyHTML(w){
+  const cs=[...w.w], kj=cs.filter(isKanji);
+  let b='';
+  if(kj.length){
+    b=[...new Set(kj)].map(kanjiLine).join('');
+    if(cs.some(c=>!isKanji(c)))b+='<p class="wn">The kana after the kanji ('+esc(cs.filter(c=>!isKanji(c)).join(''))+') is the word ending. It carries grammar, not meaning.</p>';
+    b='<p class="wn">Each kanji carries a meaning:</p>'+b;
+  } else {
+    b='<p class="wn">Written only in '+(isKata(w.w)?'katakana (used mostly for foreign words)':'hiragana')+'. Each character is just a sound and has no meaning by itself:</p>'+soundsLine(w.k);
+    if(w.pt)b+='<p class="wn">Particles are small grammar words. They mark the role of the word right before them.</p>';
+  }
+  return '<div class="whyb"><div class="wh">Why this word</div>'+b+'</div>';
+}
+function statusLine(rank){return rank>=0?(isKnown(rank)?'<div class="pst ok">Learned</div>':'<div class="pst">In your list ('+lab(rank)+'), not learned yet</div>'):'<div class="pst">Not in your word list yet</div>'}
+function popToken(s,x){
+  const [sur,k,r,gid,rank]=s.t[x], g=gid>=0?G[gid]:null, w=rank>=0?W[rank]:null;
+  let h='<div class="ph"><span class="pw" lang="ja">'+esc(sur)+'</span>'+(k!==sur?'<span class="pk" lang="ja">'+esc(k)+'</span>':'')+'<span class="pr">'+esc(r)+'</span>'+
+    '<button class="speak mini" data-say="'+esc(k||sur)+'" aria-label="Play">'+ICON_PLAY+'</button></div>';
+  if(w&&w.n)h+=w.n.map(([gl,inf])=>'<div class="pm">'+esc(gl)+(inf?'<small> ('+esc(inf)+')</small>':'')+'</div>').join('');
+  else h+='<div class="pm">'+esc(w?w.m[0]:g?g[2]:'No dictionary entry found')+'</div>';
+  if(g&&g[0]!==sur)h+='<div class="pd">Part of <b lang="ja">'+esc(g[0])+'</b>'+(g[1]&&g[1]!==g[0]?' ('+esc(g[1])+')':'')+', the dictionary form</div>';
+  const kj=[...new Set([...sur].filter(isKanji))];
+  if(kj.length)h+=kj.map(kanjiLine).join('');
+  else h+=soundsLine(k||sur);
+  return h+statusLine(rank);
+}
+function popChar(i,c){
+  const w=W[i]; let h;
+  if(isKanji(c)&&K[c])h='<div class="ph"><span class="pw" lang="ja">'+esc(c)+'</span><span class="pr">kanji</span></div><div class="pm">'+esc(K[c][0].join(', '))+'</div><div class="pd">Readings: '+esc(K[c][1].concat(K[c][2]).join(', ')||'n/a')+'</div>';
+  else{const m=morae(c);h='<div class="ph"><span class="pw" lang="ja">'+esc(c)+'</span><span class="pr">'+esc(m[0]?m[0][1]:'')+'</span></div><div class="pm">'+(isKata(c)?'Katakana':'Hiragana')+': a sound with no meaning by itself.</div>'}
+  return h+'<div class="pd">Part of <b lang="ja">'+esc(w.w)+'</b> ('+esc(w.k)+', '+esc(w.r)+'): '+esc(w.m[0])+'</div>';
+}
+function showPop(html,el){
+  const p=$('#pop'); p.innerHTML=html; p.classList.add('on');
+  const r=el.getBoundingClientRect(), pw=p.offsetWidth, ph=p.offsetHeight;
+  let left=r.left+r.width/2-pw/2; left=Math.max(12,Math.min(left,window.innerWidth-pw-12));
+  let top=r.bottom+8; if(top+ph>window.innerHeight-90)top=Math.max(12,r.top-ph-8);
+  p.style.left=left+'px'; p.style.top=(top+window.scrollY)+'px';
+}
+function hidePop(){const p=$('#pop');if(p)p.classList.remove('on')}
+function wordBig(w,i){
+  const t=dw(w);
+  return '<div class="word'+(t.length>6?' xl':t.length>4?' lg':'')+'" lang="ja" data-wi="'+i+'">'+[...t].map(c=>'<span data-c="'+esc(c)+'">'+esc(c)+'</span>').join('')+'</div>';
 }
 
 // ---------- STUDY: learn in small batches, recall to criterion, relearn across sessions ----------
@@ -322,7 +401,8 @@ const inQueue=i=>SQ.some(t=>t.i===i)||(curT&&curT.i===i);
 function dueList(){const now=Date.now(),out=[];for(const k in st.w){const r=st.w[k];if(r[1]<=now&&!inQueue(+k))out.push(+k)}out.sort((a,b)=>st.w[a][1]-st.w[b][1]);return out}
 // weighted sample without replacement: earlier items (more frequent / more overdue) are likelier, but order is never fixed
 function wsample(list,n,spread){const pool=list.map((x,k)=>({x,w:1/(1+k/spread)})),out=[];while(out.length<n&&pool.length){let tot=0;for(const p of pool)tot+=p.w;let r=Math.random()*tot,j=0;for(;j<pool.length-1;j++){r-=pool[j].w;if(r<=0)break}out.push(pool[j].x);pool.splice(j,1)}return out}
-function nextNewList(n){const cand=[];for(let i=0;i<Math.min(st.unlocked,W.length)&&cand.length<40;i++)if(!st.w[i]&&!inQueue(i))cand.push(i);return wsample(cand,n,8)}
+function buildOrder(){ORDER=[];POS={};const parts=W.map((w,i)=>w.pt?i:-1).filter(i=>i>=0).sort((a,b)=>W[a].at-W[b].at);let p=0;for(let i=0;i<W.length;i++){if(W[i].pt)continue;while(p<parts.length&&W[parts[p]].at<=ORDER.length)ORDER.push(parts[p++]);ORDER.push(i)}while(p<parts.length)ORDER.push(parts[p++]);ORDER.forEach((x,n)=>POS[x]=n)}
+function nextNewList(n){const cand=[];for(let o=0;o<Math.min(st.unlocked,ORDER.length)&&cand.length<40;o++){const i=ORDER[o];if(!st.w[i]&&!inQueue(i))cand.push(i)}return wsample(cand,n,8)}
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function reviewMode(i){
   const r=st.w[i]||[0,0,0,0]; let m=(r[2]%2===0)?'recv':'prod';
@@ -359,7 +439,8 @@ function poolBar(){
     (u<W.length?'<button class="btn small" data-act="unlock">+100</button>':'')+'</div>';
 }
 function pronHTML(w){
-  return '<div class="reading">'+(w.w!==w.k?'<span class="kana" lang="ja">'+esc(w.k)+'</span>':'')+(st.romaji?'<span class="romaji">'+esc(w.r)+'</span>':'')+'</div>';
+  const sub=st.script==='kana'?(w.w!==w.k?'<span class="kana small" lang="ja">written '+esc(w.w)+'</span>':''):(w.w!==w.k?'<span class="kana" lang="ja">'+esc(w.k)+'</span>':'');
+  return '<div class="reading">'+sub+(st.romaji?'<span class="romaji">'+esc(w.r)+'</span>':'')+'</div>';
 }
 function playBtns(w){
   return '<div class="pron" style="margin-top:6px"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button>'+
@@ -367,12 +448,13 @@ function playBtns(w){
 }
 function meaningHTML(i){
   const w=W[i];
+  if(w.n)return '<div class="meaning">'+esc(w.n[0][0])+'</div>'+w.n.map(([gl,inf],k)=>(k?'<p class="meaning2">'+esc(gl)+'</p>':'')+(inf?'<p class="meaning2"><small>'+esc(inf)+'</small></p>':'')).join('')+'<div class="pos">'+esc(w.p)+'</div>';
   return '<div class="meaning">'+esc(w.m[0]||'')+'</div>'+(w.m[1]?'<p class="meaning2">'+esc(w.m[1])+'</p>':'')+
     '<div class="pos">'+esc(w.p)+(w.alt?' · also written '+esc(w.alt):'')+'</div>';
 }
 function fullWord(i){
   const w=W[i];
-  return '<div class="head"><div class="word'+(w.w.length>6?' xl':w.w.length>4?' lg':'')+'" lang="ja">'+esc(w.w)+'</div>'+pronHTML(w)+playBtns(w)+'</div>'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div>';
+  return '<div class="head">'+wordBig(w,i)+pronHTML(w)+playBtns(w)+'</div>'+meaningHTML(i)+whyHTML(w)+'<div class="sents">'+sentHTML(i)+'</div>';
 }
 const MODE_LABEL={intro:'New word',recv:'Recall: meaning',prod:'Recall: Japanese',listen:'Recall: listening'};
 function renderStudy(){
@@ -389,14 +471,14 @@ function renderStudy(){
   const sess='<div class="sess"><span>'+(curT.src==='new'?'New batch':'Relearning')+'</span><span>'+roundDone+' / '+roundTotal+'</span></div>';
   let body, dock;
   if(m==='intro'){
-    body='<span class="rank">#'+(i+1)+'</span>'+fullWord(i);
+    body='<span class="rank">'+lab(i)+'</span>'+fullWord(i);
     dock='<div class="actions two"><button class="btn ghost" data-act="knew">I already know it</button><button class="btn primary" data-act="next">Got it</button></div><div class="hint">Keys: Space = got it · K = already know</div>';
   } else {
     let prompt;
-    if(m==='recv')prompt='<div class="head"><div class="word'+(w.w.length>6?' xl':w.w.length>4?' lg':'')+'" lang="ja">'+esc(w.w)+'</div>'+pronHTML(w)+'</div><p class="ask">What does it mean? Answer in your head, then check.</p>';
+    if(m==='recv')prompt='<div class="head">'+wordBig(w,i)+pronHTML(w)+'</div><p class="ask">What does it mean? Answer in your head, then check.</p>';
     if(m==='prod')prompt='<div class="head" style="padding-top:34px"><div class="bigm">'+esc(w.m[0])+'</div><div class="pos">'+esc(w.p)+'</div></div><p class="ask">Say the Japanese word out loud, then check.</p>';
     if(m==='listen')prompt='<div class="head"><button class="speak big" data-say="'+esc(w.k)+'" aria-label="Play again">'+ICON_PLAY+'</button></div><p class="ask">What word is this, and what does it mean?</p>';
-    body='<span class="rank">#'+(i+1)+'</span>'+prompt+'<div class="answer hidden" data-rev>'+(m==='recv'?'<div class="head" style="padding-top:8px">'+playBtns(w)+'</div>'+meaningHTML(i)+'<div class="sents">'+sentHTML(i)+'</div>':fullWord(i))+'</div>';
+    body='<span class="rank">'+lab(i)+'</span>'+prompt+'<div class="answer hidden" data-rev>'+(m==='recv'?'<div class="head" style="padding-top:8px">'+playBtns(w)+'</div>'+meaningHTML(i)+whyHTML(w)+'<div class="sents">'+sentHTML(i)+'</div>':fullWord(i))+'</div>';
     dock='<button class="btn primary reveal" style="margin-top:0" data-act="reveal" id="revealBtn">Show answer</button>'+
       '<div class="actions two hidden" data-rev><button class="btn bad" data-act="forgot">Forgot</button><button class="btn good" data-act="got">Got it</button></div><div class="hint">Keys: Space = show, then 1 = forgot · 2 or Space = got it</div>';
   }
@@ -456,12 +538,12 @@ function renderQ(){
   const opts=shuffle([i,...distract]);
   Q.cur={i,type,opts}; Q.answered=false;
   let prompt='';
-  if(type==='meaning')prompt='<div class="head"><div class="word'+(w.w.length>6?' xl':w.w.length>4?' lg':'')+'" lang="ja">'+esc(w.w)+'</div>'+pronHTML(w)+'<div class="pron"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button></div></div><p class="ask">What does it mean?</p>';
+  if(type==='meaning')prompt='<div class="head">'+wordBig(w,i)+pronHTML(w)+'<div class="pron"><button class="speak" data-say="'+esc(w.k)+'" aria-label="Play word">'+ICON_PLAY+'</button></div></div><p class="ask">What does it mean?</p>';
   if(type==='reverse')prompt='<div class="head" style="padding-top:20px"><div class="bigm">'+esc(w.m[0])+'</div></div><p class="ask">Pick the Japanese word</p>';
   if(type==='listen')prompt='<div class="head"><button class="speak big" data-say="'+esc(w.k)+'" aria-label="Play word again">'+ICON_PLAY+'</button></div><p class="ask">Listen, then pick the word</p>';
   const optHTML=opts.map((x,n)=>type==='meaning'
     ?'<button class="opt" data-opt="'+x+'"><b>'+(n+1)+'.</b> '+esc(W[x].m[0])+'</button>'
-    :'<button class="opt jpopt" data-opt="'+x+'"><span lang="ja">'+esc(W[x].w)+'</span>'+(st.romaji?'<small class="optr">'+(W[x].w!==W[x].k?esc(W[x].k)+' · ':'')+esc(W[x].r)+'</small>':'')+'</button>').join('');
+    :'<button class="opt jpopt" data-opt="'+x+'"><span lang="ja">'+esc(dw(W[x]))+'</span>'+(st.romaji?'<small class="optr">'+(st.script!=='kana'&&W[x].w!==W[x].k?esc(W[x].k)+' · ':'')+esc(W[x].r)+'</small>':'')+'</button>').join('');
   view.innerHTML='<div class="card enter" id="card"><div class="qtop"><span>'+(qMode==='weak'?'Weak words · ':'')+'Question '+(Q.pos+1)+' of '+Q.items.length+'</span><span class="combo">'+(Q.combo>1?'Combo ×'+Q.combo:'')+'</span></div>'+
     '<div class="progress"><i style="width:'+(Q.pos/Q.items.length*100)+'%"></i></div>'+prompt+'<div class="opts">'+optHTML+'</div><div id="qfb"></div></div>';
   if(type==='listen'||(type==='meaning'&&st.autoplay))speak(w.k);
@@ -489,14 +571,14 @@ function renderWords(){
 }
 function fillWords(){
   const u=Math.min(st.unlocked,W.length), q=wf.q, out=[];
-  for(let i=0;i<W.length;i++){
-    const w=W[i], r=st.w[i];
-    if(wf.f==='unlocked'&&i>=u)continue; if(wf.f==='locked'&&i<u)continue;
+  for(let o=0;o<ORDER.length;o++){
+    const i=ORDER[o], w=W[i], r=st.w[i];
+    if(wf.f==='unlocked'&&o>=u)continue; if(wf.f==='locked'&&o<u)continue;
     if(wf.f==='learned'&&!isKnown(i))continue; if(wf.f==='weak'&&!(r&&(r[3]>0||r[0]<=2)&&r[0]>=1))continue;
     if(q&&!(w.w.includes(q)||w.k.includes(q)||w.r.includes(q)||w.m.join(' ').toLowerCase().includes(q)))continue;
     out.push(i); if(out.length>=wf.lim)break;
   }
-  $('#wl').innerHTML=out.map(i=>{const w=W[i];return '<div class="row"><span class="n">#'+(i+1)+'</span><div style="min-width:0"><div class="w" lang="ja">'+esc(w.w)+'<small>'+esc(w.k!==w.w?w.k+' · ':'')+esc(w.r)+'</small></div><div class="m">'+esc(w.m[0])+'</div></div>'+
+  $('#wl').innerHTML=out.map(i=>{const w=W[i];return '<div class="row"><span class="n">'+lab(i)+'</span><div style="min-width:0"><div class="w" lang="ja">'+esc(dw(w))+'<small>'+esc(w.k!==w.w?w.k+' · ':'')+esc(w.r)+'</small></div><div class="m">'+esc(w.m[0])+'</div></div>'+
     '<div style="display:flex;gap:8px;align-items:center"><span class="dot'+(isMastered(i)?' m':isKnown(i)?' l':'')+'" title="'+(isMastered(i)?'Solid':isKnown(i)?'Learning':'Not learned')+'"></span><button class="speak mini" data-say="'+esc(w.k)+'" aria-label="Play">'+ICON_PLAY+'</button></div></div>'}).join('')+
     (out.length>=wf.lim?'<button class="btn" data-act="more">Show more</button>':'')+(out.length?'':'<p class="hint">No words match.</p>');
 }
@@ -520,7 +602,7 @@ function renderSettings(){
    '<p style="margin-top:10px">Daily goal (new words). The ring at the top counts them.</p>'+seg('goal',[50,100,150,200,300])+
    '<label class="toggle" for="t4">Also recall Japanese from English<input type="checkbox" id="t4" data-set="prod"'+(st.prod?' checked':'')+'></label>'+
    '<label class="toggle" for="t5">Include listening-only recall<input type="checkbox" id="t5" data-set="listen"'+(st.listen?' checked':'')+'></label></section>'+
-  '<section><h3>Display and sound</h3>'+
+  '<section><h3>Display and sound</h3><p>Writing</p>'+seg('script',[['kanji','Kanji + kana'],['kana','Hiragana only']])+
    '<label class="toggle" for="t1">Play the word automatically<input type="checkbox" id="t1" data-set="autoplay"'+(st.autoplay?' checked':'')+'></label>'+
    '<label class="toggle" for="t2">Show romaji (English letters) under the kana<input type="checkbox" id="t2" data-set="romaji"'+(st.romaji?' checked':'')+'></label>'+
    '<label class="toggle" for="t3">Show kana under sentences<input type="checkbox" id="t3" data-set="hira"'+(st.hira?' checked':'')+'></label>'+
@@ -555,19 +637,23 @@ function render(){
 }
 function go(t){if(tab==='study'&&t!=='study'&&curT){SQ.unshift(curT);curT=null;roundDone=Math.max(0,roundDone-1)}tab=t; if(location.hash!=='#'+t)history.replaceState(null,'','#'+t); render()}
 let toastT; function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2600)}
-function unlock(n){const before=st.unlocked;st.unlocked=Math.min(W.length,st.unlocked+n);save();toast('Unlocked words #'+(before+1)+'–'+st.unlocked)}
+function unlock(n){st.unlocked=Math.min(ORDER.length,st.unlocked+n);save();toast(st.unlocked+' words unlocked')}
 let resetArmed=false;
 document.addEventListener('click',e=>{
-  const wEl=e.target.closest('[data-w]');
-  if(wEl){const w=W[+wEl.dataset.w];toast(w.w+(w.k!==w.w?' ('+w.k+')':'')+' · '+w.m[0]+(isKnown(+wEl.dataset.w)?' · learned':''));speak(w.k);return}
+  const inPop=e.target.closest('#pop');
+  if(!inPop)hidePop();
+  const tokEl=!inPop&&e.target.closest('.tok[data-s]');
+  if(tokEl){const s=S[+tokEl.dataset.s];showPop(popToken(s,+tokEl.dataset.x),tokEl);return}
+  const chEl=!inPop&&e.target.closest('[data-wi] [data-c]');
+  if(chEl){showPop(popChar(+chEl.closest('[data-wi]').dataset.wi,chEl.dataset.c),chEl);return}
   const t=e.target.closest('button,[data-say]'); if(!t)return;
   if(t.dataset.say){speak(t.dataset.say,!!t.dataset.slow);return}
   if(t.dataset.tab){go(t.dataset.tab);return}
   if(t.dataset.opt!==undefined){answer(+t.dataset.opt);return}
   if(t.dataset.wf){wf.f=t.dataset.wf;wf.lim=200;renderWords();return}
   if(t.dataset.add){unlock(+t.dataset.add);renderSettings();return}
-  if(t.dataset.lvl){st.unlocked=Math.min(W.length,+t.dataset.lvl);save();toast('Vocabulary set to the top '+st.unlocked+' words');renderSettings();return}
-  if(t.dataset.k){st[t.dataset.k]=+t.dataset.v;save();renderSettings();updateHeader();return}
+  if(t.dataset.lvl){st.unlocked=+t.dataset.lvl>=3000?ORDER.length:+t.dataset.lvl;save();toast('Vocabulary set to the top '+st.unlocked+' words');renderSettings();return}
+  if(t.dataset.k){const v=t.dataset.v;st[t.dataset.k]=isNaN(+v)?v:+v;save();renderSettings();updateHeader();return}
   const a=t.dataset.act; if(!a)return;
   if(a==='unlock'){unlock(100);if(tab==='study'&&!curT)renderStudy();else{const p=document.querySelector('.pool');if(p)p.outerHTML=poolBar()}return}
   if(a==='more'){wf.lim+=300;fillWords();return}
@@ -592,12 +678,13 @@ document.addEventListener('keydown',e=>{
     else if(Q.answered&&(k===' '||k==='enter')){e.preventDefault();Q.pos++;renderQ()}
   }
 });
+window.addEventListener('scroll',hidePop,{passive:true});
 window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(['study','quiz','words','settings'].includes(h)&&h!==tab){go(h)}});
 
 // ---------- boot ----------
 const h=location.hash.slice(1); if(['study','quiz','words','settings'].includes(h))tab=h;
 updateHeader();
-fetch('data.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(d=>{W=d.words;S=d.sents;restoreSession();render();initSync()})
+fetch('data.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(d=>{W=d.words;S=d.sents;G=d.g||[];K=d.k||{};buildOrder();restoreSession();render();initSync()})
   .catch(()=>{view.innerHTML='<div class="card empty"><h2>Could not load the word list</h2><p>Check your connection and reload the page.</p></div>'});
 })();
 </script>
